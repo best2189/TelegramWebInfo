@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Telegram Bot Tester</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, sans-serif;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            padding-top: 20px;
+            background: linear-gradient(135deg, #002868, #ffffff, #bf0a30);
+            background-size: 400% 400%;
+            animation: gradientAnimation 15s ease infinite;
+        }
+
+        @keyframes gradientAnimation {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 25px;
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            width: 95%;
+            max-width: 700px;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        h2, h3 { color: #002868; margin-top: 0; }
+
+        /* จัด Layout ช่อง Input Token กับ ปุ่มคัดลอก */
+        .token-group {
+            display: flex;
+            gap: 10px;
+            margin: 10px 0;
+        }
+
+        input, textarea {
+            width: 100%;
+            padding: 12px;
+            margin: 8px 0;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            box-sizing: border-box;
+            font-family: inherit;
+        }
+
+        button {
+            background-color: #002868;
+            color: white;
+            border: none;
+            padding: 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            width: 100%;
+            font-weight: bold;
+            margin-top: 5px;
+        }
+
+        button:hover { background-color: #bf0a30; }
+
+        /* ปุ่มคัดลอก Token (ขนาดเล็ก) */
+        .btn-copy-token {
+            width: auto;
+            white-space: nowrap;
+            background-color: #555;
+            margin-top: 8px;
+        }
+
+        table { width: 100%; margin-top: 20px; border-collapse: collapse; }
+        th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+        th { background-color: #f8f8f8; }
+
+        .highlight-border {
+            border: 3px solid #bf0a30 !important;
+            transition: all 0.3s;
+        }
+
+        .copy-btn {
+            background-color: #0088cc;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            cursor: pointer;
+            border-radius: 5px;
+        }
+        
+        hr { border: 0; border-top: 1px solid #eee; margin: 25px 0; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h2>Telegram Bot Info Finder</h2>
+    
+    <div class="token-group">
+        <input type="text" id="token" placeholder="วาง Bot Token ของคุณที่นี่">
+        <button class="btn-copy-token" onclick="copyToken()">คัดลอก</button>
+    </div>
+    
+    <button onclick="getBotInfo()">ค้นหาข้อมูล</button>
+
+    <table id="resultTable" style="display:none;">
+        <thead>
+            <tr>
+                <th>ชื่อแชท</th>
+                <th>ประเภท</th>
+                <th>ข้อความล่าสุด</th>
+                <th>Chat ID</th>
+                <th>คัดลอก</th>
+            </tr>
+        </thead>
+        <tbody id="resultBody"></tbody>
+    </table>
+
+    <hr>
+
+    <h3>ทดสอบส่งข้อความ</h3>
+    <input type="text" id="sendToken" placeholder="Bot Token">
+    <input type="text" id="sendChatId" placeholder="Chat ID (เลขที่คัดลอกมา)">
+    <textarea id="sendMessage" rows="3" placeholder="พิมพ์ข้อความที่ต้องการทดสอบส่ง..."></textarea>
+    <button style="background-color: #28a745;" onclick="sendTestMessage()">ส่งข้อความ</button>
+</div>
+
+<script>
+    // --- ฟังก์ชันคัดลอก Token ---
+    function copyToken() {
+        const tokenInput = document.getElementById('token');
+        if (tokenInput.value) {
+            navigator.clipboard.writeText(tokenInput.value);
+            alert('คัดลอก Token แล้ว');
+        } else {
+            alert('ไม่มี Token ให้คัดลอก');
+        }
+    }
+
+    // --- ส่วนการดึงข้อมูล ---
+    async function getBotInfo() {
+        const token = document.getElementById('token').value;
+        const resultBody = document.getElementById('resultBody');
+        const table = document.getElementById('resultTable');
+        
+        if (!token) return alert('กรุณากรอก Token');
+
+        try {
+            const response = await fetch(`https://api.telegram.org/bot${token}/getUpdates`);
+            const data = await response.json();
+
+            if (!data.ok) throw new Error('Token ไม่ถูกต้อง');
+
+            resultBody.innerHTML = '';
+            table.style.display = 'table';
+
+            const uniqueChats = new Map();
+            data.result.forEach(update => {
+                const message = update.message || update.edited_message || update.channel_post;
+                if (message && message.chat) {
+                    uniqueChats.set(message.chat.id, {
+                        chat: message.chat,
+                        text: message.text || "ไม่พบข้อความ"
+                    });
+                }
+            });
+
+            uniqueChats.forEach((item, id) => {
+                const chat = item.chat;
+                const name = chat.title || chat.first_name || "Unknown";
+                const row = `<tr>
+                    <td>${name}</td>
+                    <td>${chat.type}</td>
+                    <td>${item.text}</td>
+                    <td id="cid-${id}">${id}</td>
+                    <td><button class="copy-btn" onclick="copyAction('${id}')">คัดลอก</button></td>
+                </tr>`;
+                resultBody.innerHTML += row;
+            });
+        } catch (error) {
+            alert(error.message);
+        }
+    }
+
+    function copyAction(id) {
+        const targetElement = document.getElementById(`cid-${id}`);
+        const textToCopy = targetElement.innerText;
+        navigator.clipboard.writeText(textToCopy);
+        targetElement.classList.add('highlight-border');
+        setTimeout(() => { targetElement.classList.remove('highlight-border'); }, 1000);
+    }
+
+    // --- ส่วนการส่งข้อความ ---
+    async function sendTestMessage() {
+        const token = document.getElementById('sendToken').value;
+        const chatId = document.getElementById('sendChatId').value;
+        const text = document.getElementById('sendMessage').value;
+
+        if (!token || !chatId || !text) {
+            return alert('กรุณากรอกข้อมูลให้ครบทั้ง 3 ช่อง');
+        }
+
+        try {
+            const url = `https://api.telegram.org/bot${token}/sendMessage`;
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ chat_id: chatId, text: text })
+            });
+
+            const data = await response.json();
+
+            if (data.ok) {
+                alert('ส่งข้อความสำเร็จ!');
+            } else {
+                alert('ส่งไม่สำเร็จ: ' + data.description);
+            }
+        } catch (error) {
+            alert('เกิดข้อผิดพลาด: ' + error.message);
+        }
+    }
+</script>
+
+</body>
+</html>
